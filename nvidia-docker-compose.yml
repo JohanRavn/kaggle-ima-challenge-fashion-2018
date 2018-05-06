@@ -1,0 +1,17 @@
+services:
+  tf:
+    build:
+      context: ./src
+    devices:
+    - /dev/nvidia0
+    - /dev/nvidia1
+    - /dev/nvidiactl
+    - /dev/nvidia-uvm
+    - /dev/nvidia-uvm-tools
+    volumes:
+    - ./:/imatrialist
+    - nvidia_driver_384.111:/usr/local/nvidia:ro
+version: '3'
+volumes:
+  nvidia_driver_384.111:
+    external: true
