@@ -18,7 +18,7 @@ def create_targets(anno):
 def create_image(path):
     img = cv2.imread(path)
     try:
-        img = cv2.resize(img, (224, 224))
+        img = cv2.resize(img, (299, 299))
     except cv2.error as e:
         print(e)
         print(path)
@@ -62,7 +62,7 @@ def convert_to_categorical(Y, num_classes):
         new_y.append(tmp)
     return new_y
 
-def calculate_num_classes(Y)
+def calculate_num_classes(Y):
     unique_targets = set()
     for target in Y:
         unique_targets = unique_targets.union(target)
@@ -70,13 +70,13 @@ def calculate_num_classes(Y)
     num_classes = max(unique_targets)
     return num_classes
 
-def load_data(dataset, selected):
-    file_count = 15000
+def load_data(dataset):
+    file_count = 2000
     f = open("../input/" + dataset + ".json", "r")
     labels = json.loads(f.read())
     anno = [x for x in labels["annotations"]][:file_count]
 
-    extraced
+    #extraced
 
     cpu_count = 14
     files_per_cpu = int(len(anno) / cpu_count) + 1
@@ -99,7 +99,7 @@ def load_data(dataset, selected):
         X += X_q.get()
         Y += Y_q.get()
 
-    num_classes = calculate_num_classes(num_classes)
+    num_classes = calculate_num_classes(Y)
     Y = convert_to_categorical(Y, num_classes)
     X = np.array(X).astype("float32")
     mean_pixel = [103.939, 116.779, 123.68]

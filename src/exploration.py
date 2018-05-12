@@ -54,7 +54,7 @@ def convert_to_categorical(Y, num_classes):
 
 def load_annotations(dataset):
 
-    file_count = 15000
+    file_count = 30000
     f = open("../input/" + dataset + ".json", "r")
     labels = json.loads(f.read())
     anno = [x for x in labels["annotations"]][:file_count]
@@ -62,8 +62,8 @@ def load_annotations(dataset):
 
 def display_image_without(anno, label):
     for x in anno:
-        if str(label[0]) not in x['labelId'] and str(label[1]) in x['labelId']:
-        #if (str(label) in x['labelId']):
+        #if str(label[0]) not in x['labelId'] and str(label[1]) in x['labelId']:
+        if (str(label) in x['labelId']):
             try:
                 img = plt.imread("../data/train_images/" + x['imageId'] + '.jpeg')
             except:
@@ -93,7 +93,7 @@ if __name__ == "__main__":
     anno = load_annotations("train")
     calculate_distribution(anno)
     #display_image_without(anno, [100, 66])
-    display_image_without(anno, [100,66])
+    display_image_without(anno, 215)
 
 
 # 51: bh/korset?
@@ -103,3 +103,6 @@ if __name__ == "__main__":
 # 55: ??
 # 33: brown jeans?
 # 100: tights
+# 200: coat
+# 86: lær?
+# 68: shoes

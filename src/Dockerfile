@@ -66,5 +66,7 @@ RUN cd /opencv-3.2.0/cmake_binary \
     && cd /usr/lib/python3.5/dist-packages \
     && ln -s cv2.cpython-35m-x86_64-linux-gnu.so cv2.so
 
+ARG KERAS_VERSION=2.1.6
+RUN pip --no-cache-dir install git+git://github.com/fchollet/keras.git@${KERAS_VERSION}
 
 WORKDIR /imatrialist
