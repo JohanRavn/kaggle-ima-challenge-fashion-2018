@@ -1,6 +1,6 @@
 import tensorflow as tf
 import numpy as np
-from dataset import load_data, load_test_data#, generate_results_report
+from dataset import load_annotations, generate_sets, BatchGenerator#, generate_results_report
 from sklearn.metrics import fbeta_score
 from keras.applications import Xception
 from keras.utils import multi_gpu_model
@@ -26,9 +26,13 @@ def f_score(y_true, y_pred):
     return tf.reduce_mean(f_score)
 
 def train():
-    X_train, y_train, num_classes = load_data("train", 50000)
-    print(X_train.shape)
-    print(y_train.shape)
+    train, valid = load_annotations(0.33)
+    x_train_set, y_train_set = generate_sets(train)
+    x_valid_set, y_valid_set = generate_sets(valid)
+    train_generator = BatchGenerator(x_train_set, y_train_set, 32)
+    valid_generator = BatchGenerator(x_valid_set, y_valid_set, 32)
+    print(len(train_generator))
+    print(len(valid_generator))
 
     with tf.device('/cpu:0'):
         base_model = Xception(
@@ -36,32 +40,36 @@ def train():
                 weights='imagenet',
                 # input_shape=(299, 299, 3),
                 # pooling='avg',
-                classes=num_classes)
+                classes=230)
         x = base_model.output
         x = GlobalAveragePooling2D()(x)
-        pred = Dense(num_classes, activation='softmax')(x)
+        pred = Dense(230, activation='softmax')(x)
         model = Model(inputs=base_model.input, outputs=pred)
 
     # Replicates the model on 8 GPUs.
     # This assumes that your machine has 8 available GPUs.
     parallel_model = multi_gpu_model(model,
-                                      gpus=2,
-                                      cpu_merge=True,
-                                      cpu_relocation=True)
+                                     gpus=2,
+                                     cpu_merge=True,
+                                     cpu_relocation=True)
     parallel_model.compile(loss='categorical_crossentropy',
                            optimizer='rmsprop',
                            metrics=['accuracy', f_score])
     # This `fit` call will be distributed on 8 GPUs.
     # Since the batch size is 256, each GPU will process 32 samples.
-    parallel_model.fit(X_train,
-                       y_train,
-                       epochs=20,
-                       batch_size=32,
-                       validation_split=0.3,
-                       shuffle=True)
+
+    parallel_model.fit_generator(train_generator,
+                                 steps_per_epoch=1000,
+                                 epochs=10,
+                                 verbose=1,
+                                 validation_data=valid_generator,
+                                 validation_steps=300,
+                                 max_queue_size=100,
+                                 workers=4,
+                                 use_multiprocessing=True)
 
 
-    model.save_model("../models/model.h5")
+    model.save_weights("../models/model.h5")
     #X_test, labels = load_test_data()
     #result = model.predict(X_test)
     #generate_results_report()
