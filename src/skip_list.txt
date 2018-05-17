@@ -1,0 +1,4 @@
+../data/train_images/5148.jpeg
+../data/train_images/625650.jpeg
+../data/train_images/540573.jpeg
+../data/train_images/696409.jpeg

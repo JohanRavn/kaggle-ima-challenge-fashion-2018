@@ -11,6 +11,12 @@ from sklearn.model_selection import train_test_split
 
 from keras.utils import Sequence
 
+
+classes = [17, 19, 20, 53, 62, 66, 105, 106, 137, 138,
+           153, 164, 171, 176, 214, 222]
+
+num_classes = 230
+
 def create_targets(anno):
     classes = []
     for cls in anno["labelId"]:
@@ -21,11 +27,12 @@ def create_targets(anno):
 
 def create_image(path):
     img = cv2.imread(path)
+
     try:
-        img = cv2.resize(img, (299, 299))
+        img = cv2.resize(img, (224, 224))
     except cv2.error as e:
         #print(e)
-        #print(path)
+        print(path)
         return None
     return img
 
@@ -57,15 +64,34 @@ def create_sample(X_q, Y_q, current_annos):
     X_q.put(X)
     Y_q.put(Y)
 
-def convert_to_categorical(Y, num_classes):
+def convert_to_categorical(Y):
     new_y = []
     for y in Y:
+        #print(y)
         tmp = np.zeros(num_classes)
         tmp[y] = 1
-        y = tmp
+        #print(tmp)
+        #y = tmp
         new_y.append(tmp)
+    #for new in new_y:
+    #    print(new)
     return new_y
 
+def convert_to_specific_categorical(Y):
+    new_Y = []
+    for y in Y:
+        categorical = []
+
+        for i, current in enumerate(classes):
+            if current in y:
+                categorical.append(1)
+            else:
+                categorical.append(0)
+        new_Y.append(categorical)
+    #print("see conversion")
+        #print(y)
+        #print(categorical)
+    return new_Y
 
 
 def load_annotations(test_size):
@@ -83,11 +109,14 @@ def generate_sets(annotations):
     x_set = []
     y_set = []
     for i, anno in enumerate(annotations):
-        x_set.append('../data/train_images/' + str(anno['imageId'] + '.jpeg'))
-        y_set.append(create_targets(anno))
+        file_path = '../data/train_images/' + str(anno['imageId'] + '.jpeg')
+        #target = set(classes).intersection(create_targets(anno))
+        target = create_targets(anno)
+        x_set.append(file_path)
+        y_set.append(target)
         if i % 10000 == 0:
             print(i)
-    y_set = convert_to_categorical(y_set, 230)
+    y_set = convert_to_categorical(y_set)
     return x_set, y_set
 
 class BatchGenerator(Sequence):
@@ -116,8 +145,11 @@ class BatchGenerator(Sequence):
 
 # We want to return an iterator here
 def load_data(annotations, file_count):
+    f = open("../input/" + "train" + ".json", "r")
+    labels = json.loads(f.read())
+    annotations = [x for x in labels["annotations"]][:file_count]
+    annotations = shuffle(annotations, random_state=0)
 
-    num_classes = 230
 
     cpu_count = 14
     files_per_cpu = int(len(annotations) / cpu_count) + 1
@@ -140,20 +172,31 @@ def load_data(annotations, file_count):
         X += X_q.get()
         Y += Y_q.get()
 
-    Y = convert_to_categorical(Y, num_classes)
+    Y = convert_to_categorical(Y)
     X = np.array(X).astype("float32")
-    mean_pixel = [103.939, 116.779, 123.68]
-    X[:, 0, :, :] -= mean_pixel[0]
-    X[:, 1, :, :] -= mean_pixel[1]
-    X[:, 2, :, :] -= mean_pixel[2]
 
-    return X, np.array(Y), num_classes
+    return X, np.array(Y)
+
+
+def create_skip_list(x_set):
+    f = open('skip_list.txt', 'w+')
+    for i, path in enumerate(x_set):
+        img = cv2.imread(path)
+        if i % 10000 ==0:
+            print(i)
+        try:
+            img = cv2.resize(img, (224, 224))
+        except cv2.error as e:
+            f.write(path+'\n')
+            print(path) 
+    f.close()
 
 if __name__ == "__main__":
     train, valid = load_annotations(0.33)
     x_set, y_set = generate_sets(train)
-    print(np.array(y_set).shape)
-    print(len(x_set))
+    create_skip_list(x_set)
+    #print(np.array(y_set).shape)
+    #print(len(x_set))
     #train, valid = load_annotations(0.33)
     #print(len(train), len(valid))
     #trainGen = load_data()
