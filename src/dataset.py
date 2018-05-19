@@ -10,7 +10,7 @@ from sklearn.utils import shuffle
 from sklearn.model_selection import train_test_split
 
 from keras.utils import Sequence
-
+from keras.preprocessing.image import random_rotation, random_shear, random_shift
 
 classes = [17, 19, 20, 53, 62, 66, 105, 106, 137, 138,
            153, 164, 171, 176, 214, 222]
@@ -37,25 +37,30 @@ def create_image(path):
     return img
 
 def load_test_data():
-    img_paths = glob.glob("../input/test_images/*")
+    img_paths = glob.glob("../data/test_images/*")
+    img_paths = sorted(img_paths)
     labels = []
     X = []
-    for path in img_paths:
+    print(len(img_paths))
+    for i, path in enumerate(img_paths):
+        if i % 1000 == 0:
+            print(str(i) + "/" + str(len(img_paths)))
         img = create_image(path)
         labels.append(os.path.basename(path).strip('.jpeg'))
         X.append(img)
-    return X, labels
+    print(labels)
+    return np.array(X).astype('float32'), labels
     #return np.array(X).astype("float32"), labels
 
 
-def create_sample(X_q, Y_q, current_annos):
+def create_sample(X_q, Y_q, current_annos, dataset):
     X = []
     Y = []
     for i, anno in (enumerate(current_annos)):
         if i % 100 == 0:
             print("loaded: ", i)
         targets = create_targets(anno)
-        img_path = "../data/" + "train" + "_images/" + anno["imageId"] + ".jpeg"
+        img_path = "../data/" + dataset + "_images/" + anno["imageId"] + ".jpeg"
         img = create_image(img_path)
         if img is None:
             continue
@@ -94,8 +99,8 @@ def convert_to_specific_categorical(Y):
     return new_Y
 
 
-def load_annotations(test_size):
-    f = open("../input/" + "train" + ".json", "r")
+def load_annotations(dataset_name, test_size):
+    f = open("../input/" + dataset_name + ".json", "r")
     labels = json.loads(f.read())
     annotations = [x for x in labels["annotations"]]
     annotations = shuffle(annotations, random_state=0)
@@ -105,11 +110,11 @@ def load_annotations(test_size):
                                     random_state=0)
     return train, valid
 
-def generate_sets(annotations):
+def generate_sets(dataset_name, annotations):
     x_set = []
     y_set = []
     for i, anno in enumerate(annotations):
-        file_path = '../data/train_images/' + str(anno['imageId'] + '.jpeg')
+        file_path = '../data/' + dataset_name + '_images/' + str(anno['imageId'] + '.jpeg')
         #target = set(classes).intersection(create_targets(anno))
         target = create_targets(anno)
         x_set.append(file_path)
@@ -128,6 +133,14 @@ class BatchGenerator(Sequence):
     def __len__(self):
         return int(np.ceil(len(self.x) / float(self.batch_size)))
 
+    def horizontal_flip(self, x):
+        if np.random.random() < 0.5:
+            axis = 1
+            x = np.asarray(x).swapaxes(axis, 0)
+            x = x[::-1, ...]
+            x = x.swapaxes(0, axis)
+        return x
+
     def __getitem__(self, idx):
         batch_x = self.x[idx * self.batch_size:(idx+1) * self.batch_size]
         batch_y = self.y[idx * self.batch_size:(idx + 1) * self.batch_size]
@@ -135,47 +148,39 @@ class BatchGenerator(Sequence):
         Y = []
         for file_name, y in zip(batch_x, batch_y):
             img = create_image(file_name)
+
             if img is None:
                 continue
+
+            img = self.horizontal_flip(img)
+            img = random_rotation(img, 0.20)
+            img = random_shift(img, 0.10, 0.10)
+            img = random_shear(img, 0.10)
             X.append(img)
             Y.append(y)
-
+        X = np.array(X).astype('float32')/255.0
         return np.array(X), np.array(Y)
 
-
-# We want to return an iterator here
-def load_data(annotations, file_count):
-    f = open("../input/" + "train" + ".json", "r")
+def load_validation_data():
+    f = open("../input/validation.json", "r")
     labels = json.loads(f.read())
-    annotations = [x for x in labels["annotations"]][:file_count]
-    annotations = shuffle(annotations, random_state=0)
-
-
-    cpu_count = 14
-    files_per_cpu = int(len(annotations) / cpu_count) + 1
-    process_list = []
-    X_q = Queue()
-    Y_q = Queue()
-    Y = []
-    for i in range(cpu_count):
-        if i+1 == cpu_count:
-            current_annos = annotations[i*files_per_cpu:-1]
-        else:
-            current_annos = annotations[i*files_per_cpu:(i+1)*files_per_cpu]
-        p = Process(target=create_sample,
-                    args=(X_q, Y_q, current_annos))
-        p.start()
-        process_list.append(p)
-
+    annotations = [x for x in labels["annotations"]]
     X = []
-    for i in range(cpu_count):
-        X += X_q.get()
-        Y += Y_q.get()
-
+    Y = []
+    for i, anno in enumerate(annotations):
+        file_path = '../data/validation_images/' + str(anno['imageId'] + '.jpeg')
+        #target = set(classes).intersection(create_targets(anno))
+        target = create_targets(anno)
+        img = create_image(file_path)
+        if img is None:
+            continue
+        X.append(img)
+        Y.append(target)
+        if i % 1000 == 0:
+            print(i)
     Y = convert_to_categorical(Y)
-    X = np.array(X).astype("float32")
-
-    return X, np.array(Y)
+    print(np.array(Y).shape)
+    return np.array(X).astype("float32"), np.array(Y)
 
 
 def create_skip_list(x_set):

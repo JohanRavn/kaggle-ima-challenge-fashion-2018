@@ -86,7 +86,8 @@ def parallel_solution (data_type, data, numOfProcesses=20 ):
 
 if __name__ == "__main__":
 
-    dataTypeLst = ["test", "train", "validation" ]
+    #dataTypeLst = ["test", "train", "validation" ]
+    dataTypeLst = ['train']
     for data_type in dataTypeLst:
         data = json.load(open('input/' + data_type + '.json'))
         data = json_normalize(data["images"])

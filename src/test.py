@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import pandas as pd
 from keras.models import load_model
-from dataset import load_test_data, load_data
+from dataset import load_test_data, load_validation_data
 
 import os
 os.environ["CUDA_VISIBLE_DEVICES"]="1"
@@ -15,6 +15,7 @@ from keras.layers import Dense, GlobalAveragePooling2D, Reshape, Dropout, Conv2D
 from keras.models import Model
 from keras.optimizers import Adam
 from sklearn.metrics import classification_report, accuracy_score, fbeta_score
+from sklearn.utils import shuffle
 
 def f_score(y_true, y_pred):
     beta = 2
@@ -31,21 +32,8 @@ def f_score(y_true, y_pred):
     print(f_score)
     return tf.reduce_mean(f_score)
 
-def create_submission(predictions, test_id, info):
-    result1 = pd.DataFrame(predictions, columns=['c0', 'c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9'])
-    result1.loc[:, 'img'] = pd.Series(test_id, index=result1.index)
-    now = datetime.datetime.now()
-    if not os.path.isdir('subm'):
-        os.mkdir('subm')
-    suffix = info + '_' + str(now.strftime("%Y-%m-%d-%H-%M"))
-    sub_file = os.path.join('subm', 'submission_' + suffix + '.csv')
-    result1.to_csv(sub_file, index=False)
 
-
-def validate():
-    X, Y = load_data("train", 10000)
-
-
+def load_model(weights):
     classes= 230
     base_model = ResNet50(
                     include_top=False,
@@ -61,49 +49,102 @@ def validate():
     x = Dense(classes, activation='sigmoid', name='predictions')(x)
     #pred = Dense(230, activation='softmax')(x)
     model = Model(inputs=base_model.input, outputs=x)
-    model.load_weights("../models/ResNet50_all_epoch.h5")
+    model.load_weights(weights)
+    return model
+
+def ensemble(X, Y):
+    pred = np.zeros(Y.shape)
+    count = 0
+    for i in range(6, 15):
+        print("loading model: ", "../models/ResNet50_all_epoch_"+str(i)+".h5")
+        model = load_model("../models/ResNet50_all_epoch_"+str(i)+".h5")
+        pred += model.predict(X, verbose=1)
+        count += 1
+    pred /= count
+    check_different_thresholds(Y, pred)
+    return pred
+
+def ensemble_test(X):
+    pred = np.zeros((X.shape[0], 230))
+    count = 0
+    for i in range(6, 15):
+        print("loading model: ", "../models/ResNet50_all_epoch_"+str(i)+".h5")
+        model = load_model("../models/ResNet50_all_epoch_"+str(i)+".h5")
+        pred += model.predict(X, verbose=1)
+        count += 1
+    pred /= count
+    return pred
+
+def check_different_thresholds(Y, pred):
+    current = 0.0
+    best = 0.0
+    while current < 1.0:
+        print("current threshold: ", current)
+        tmp = np.copy(pred)
+        tmp[tmp > current] = 1
+        tmp[tmp <= current] = 0
+        #print(classification_report(Y, tmp))
+        print(accuracy_score(Y, tmp))
+        print(fbeta_score(Y, tmp, 1, average='micro'))
+        if fbeta_score(Y, tmp, 1, average='micro') > best:
+            best = current
+        current += 0.01
 
 
-    pred = model.predict(X, batch_size=16, verbose=1)
+def validate():
+    X, Y = load_validation_data()
+    X = X/255.0
+    #pred = model.predict(X/255.0, verbose=1)
+    pred = ensemble(X, Y)
     print(pred.shape)
-    #for one, two in zip(Y, pred):
-    #    print(one[66], two[66])
-    #    two[66] = 1
+        #X,Y = shuffle(X, Y)
 
-    pred[pred > 0.5] = 1
-    pred[pred <= 0.5] = 0
-
+        #for one, two in zip(Y, pred):
+        #    print(one[66], two[66])
+        #    two[66] = 1
+    #check_different_thresholds(Y, pred)
+    pred[pred > 0.25] = 1
+    pred[pred <= 0.25] = 0
     print(classification_report(Y, pred))
     print(accuracy_score(Y, pred))
-    print(fbeta_score(Y, pred, 2, average='micro'))
-    
+    print(fbeta_score(Y, pred, 1, average='micro'))
+        
     # create_submission(test_res, test_id, info_string)
+def write_submission(pred, labels):
+    #p = np.where(pred > 0.5)
+    submission = open("submission_1.csv", "w+")
+    submission.write("image_id,label_id\n")
+    #for p, label in zip(pred, labels):
+    for i in range(1,39707):
+        try:
+            index = int(labels.index(str(i)))
+            indices = list(np.where(pred[index] > 0.5)[0])
+            #print(list(indices[0]))
+
+            line = str(i) + ","
+            for j in indices:
+                #print(j)
+                line += str(j)+" "
+            line += "\n"
+            submission.write(line)
+        except ValueError:
+            line = str(i) +",\n"
+            submission.write(line)
+
+
+    submission.close()
+
 def test():
     X, labels = load_test_data()
-
-    print(len(X))
-
-    classes= 230
-    base_model = VGG16(
-                    include_top=False,
-                    weights=None,
-                    input_shape=(224, 224, 3),
-                    #pooling='avg',
-                    classes=230,
-                    )
-    x = base_model.output
-    x = Flatten()(x)
-    x = Dense(256, activation='relu', name='fc1')(x)
-    x = Dense(256, activation='relu', name='fc2')(x)
-    x = Dense(classes, activation='softmax', name='predictions')(x)
-    #pred = Dense(230, activation='softmax')(x)
-    model = Model(inputs=base_model.input, outputs=x)
-    model.load_weights("../models/100_epoch_vgg16.h5")
+    X /= 255.0
+    #model = load_model()
 
 
-    preds = model.predict(X, batch_size=16, verbose=1)
-
-    create_submission(test_res, test_id, info_string)
+    #pred = model.predict(X/255.0, batch_size=16, verbose=1)
+    pred = ensemble_test(X)
+    pred[pred > 0.25] = 1
+    pred[pred <= 0.25] = 0
+    write_submission(pred, labels)
 
 if __name__ == '__main__':
-    validate()
+    test()
