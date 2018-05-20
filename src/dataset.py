@@ -25,18 +25,19 @@ def create_targets(anno):
     return classes
 
 
-def create_image(path):
+def create_image(path, shape):
     img = cv2.imread(path)
 
     try:
-        img = cv2.resize(img, (224, 224))
+        img = cv2.resize(img, shape)
     except cv2.error as e:
         #print(e)
         print(path)
         return None
     return img
 
-def load_test_data():
+
+def load_test_data(shape):
     img_paths = glob.glob("../data/test_images/*")
     img_paths = sorted(img_paths)
     labels = []
@@ -45,11 +46,12 @@ def load_test_data():
     for i, path in enumerate(img_paths):
         if i % 1000 == 0:
             print(str(i) + "/" + str(len(img_paths)))
-        img = create_image(path)
+        img = create_image(path, shape)
         labels.append(os.path.basename(path).strip('.jpeg'))
         X.append(img)
     print(labels)
-    return np.array(X).astype('float32'), labels
+    X = np.array(X).astype('float32')/255.0
+    return X, labels
     #return np.array(X).astype("float32"), labels
 
 
@@ -126,9 +128,10 @@ def generate_sets(dataset_name, annotations):
 
 class BatchGenerator(Sequence):
 
-    def __init__(self, x_set, y_set, batch_size):
+    def __init__(self, x_set, y_set, batch_size, shape):
         self.x, self.y = x_set, y_set
         self.batch_size = batch_size
+        self.shape = shape
 
     def __len__(self):
         return int(np.ceil(len(self.x) / float(self.batch_size)))
@@ -147,31 +150,34 @@ class BatchGenerator(Sequence):
         X = []
         Y = []
         for file_name, y in zip(batch_x, batch_y):
-            img = create_image(file_name)
+            img = create_image(file_name, self.shape)
 
             if img is None:
                 continue
 
-            img = self.horizontal_flip(img)
-            img = random_rotation(img, 0.20)
-            img = random_shift(img, 0.10, 0.10)
-            img = random_shear(img, 0.10)
+            #img = self.horizontal_flip(img)
+            #img = random_rotation(img, 0.20)
+            #img = random_shift(img, 0.10, 0.10)
+            #img = random_shear(img, 0.10)
             X.append(img)
             Y.append(y)
         X = np.array(X).astype('float32')/255.0
         return np.array(X), np.array(Y)
 
-def load_validation_data():
+def load_validation_data(shape, count=None):
     f = open("../input/validation.json", "r")
     labels = json.loads(f.read())
-    annotations = [x for x in labels["annotations"]]
+    if count == None:
+        annotations = [x for x in labels["annotations"]]
+    else:
+        annotations = [x for x in labels["annotations"]][:count]
     X = []
     Y = []
     for i, anno in enumerate(annotations):
         file_path = '../data/validation_images/' + str(anno['imageId'] + '.jpeg')
         #target = set(classes).intersection(create_targets(anno))
         target = create_targets(anno)
-        img = create_image(file_path)
+        img = create_image(file_path, shape)
         if img is None:
             continue
         X.append(img)
@@ -179,22 +185,9 @@ def load_validation_data():
         if i % 1000 == 0:
             print(i)
     Y = convert_to_categorical(Y)
-    print(np.array(Y).shape)
-    return np.array(X).astype("float32"), np.array(Y)
+    X = np.array(X).astype("float32")/255.0
+    return X, np.array(Y)
 
-
-def create_skip_list(x_set):
-    f = open('skip_list.txt', 'w+')
-    for i, path in enumerate(x_set):
-        img = cv2.imread(path)
-        if i % 10000 ==0:
-            print(i)
-        try:
-            img = cv2.resize(img, (224, 224))
-        except cv2.error as e:
-            f.write(path+'\n')
-            print(path) 
-    f.close()
 
 if __name__ == "__main__":
     train, valid = load_annotations(0.33)

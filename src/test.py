@@ -4,7 +4,7 @@ from keras.models import load_model
 from dataset import load_test_data, load_validation_data
 
 import os
-os.environ["CUDA_VISIBLE_DEVICES"]="1"
+os.environ["CUDA_VISIBLE_DEVICES"]="-1"    
 import tensorflow as tf
 import numpy as np
 from dataset import load_annotations, generate_sets, BatchGenerator#, generate_results_report
@@ -32,37 +32,82 @@ def f_score(y_true, y_pred):
     print(f_score)
     return tf.reduce_mean(f_score)
 
-
-def load_model(weights):
-    classes= 230
-    base_model = ResNet50(
+def load_xception_model(weights):
+    classes = 230
+    base_model = Xception(
                     include_top=False,
                     weights=None,
-                    input_shape=(224, 224, 3),
-                    #pooling='avg',
+                    input_shape=(299, 299, 3),
                     classes=classes,
                     )
     x = base_model.output
-    x = Flatten()(x)
-    #x = Dense(256, activation='relu', name='fc1')(x)
-    #x = Dense(256, activation='relu', name='fc2')(x)
+    x = GlobalAveragePooling2D(name='avg_pool')(x)
     x = Dense(classes, activation='sigmoid', name='predictions')(x)
-    #pred = Dense(230, activation='softmax')(x)
     model = Model(inputs=base_model.input, outputs=x)
     model.load_weights(weights)
     return model
 
-def ensemble(X, Y):
-    pred = np.zeros(Y.shape)
+def load_resnet50_model(weights):
+    classes= 230
+    base_model = ResNet50(include_top=False, weights=None,
+                          input_shape=(224, 224, 3), classes=classes)
+    x = base_model.output
+    x = Flatten()(x)
+    x = Dense(classes, activation='sigmoid', name='predictions')(x)
+    model = Model(inputs=base_model.input, outputs=x)
+    model.load_weights(weights)
+    return model
+
+def load_vgg16_model(weights):
+    classes= 230
+    base_model = VGG16(include_top=False, weights=None,
+                          input_shape=(96, 96, 3), classes=classes)
+    x = base_model.output
+    x = Flatten()(x)
+    x = Dense(512, activation='relu', name='fc1')(x)
+    x = Dense(512, activation='relu', name='fc2')(x)
+    x = Dense(230, activation='sigmoid')(x)
+    model = Model(inputs=base_model.input, outputs=x)
+    model.load_weights(weights)
+    return model
+
+
+def ensemble_xception(X, Y=None):
+    pred = np.zeros((X.shape[0], 230))
+    count = 0
+    for i in range(0, 3):
+        print("../models/xception_all_epoch_"+str(i)+".h5")
+        model = load_xception_model("../models/xception_all_epoch_"+str(i)+".h5")
+        pred += model.predict(X, verbose=1)
+        count += 1
+    pred /= count
+    return pred
+
+
+def ensemble_resnet50(X, Y=None):
+    pred = np.zeros((X.shape[0], 230))
+    count = 0
+    for i in range(6, 13):
+        print("loading model: ", "../models/ResNet50_all_epoch_"+str(i)+".h5")
+        model = load_resnet50_model("../models/ResNet50_all_epoch_"+str(i)+".h5")
+        tmp = model.predict(X, verbose=1)
+        # check_different_thresholds(Y, tmp)
+        pred += tmp
+        count += 1
+    pred /= count
+    return pred
+
+"""def ensemble_vgg16(X, Y):
+    pred = np.zeros((X.shape[0], 230))
     count = 0
     for i in range(6, 15):
-        print("loading model: ", "../models/ResNet50_all_epoch_"+str(i)+".h5")
-        model = load_model("../models/ResNet50_all_epoch_"+str(i)+".h5")
+        print("loading model: ", "../models/vgg16_all_epoch_"+str(i)+".h5")
+        model = load_resnet50_model("../models/vgg16_all_epoch_"+str(i)+".h5")
         pred += model.predict(X, verbose=1)
         count += 1
     pred /= count
     check_different_thresholds(Y, pred)
-    return pred
+    return pred"""
 
 def ensemble_test(X):
     pred = np.zeros((X.shape[0], 230))
@@ -92,30 +137,54 @@ def check_different_thresholds(Y, pred):
 
 
 def validate():
-    X, Y = load_validation_data()
-    X = X/255.0
-    #pred = model.predict(X/255.0, verbose=1)
-    pred = ensemble(X, Y)
-    print(pred.shape)
-        #X,Y = shuffle(X, Y)
+    # X, Y = load_validation_data((299, 299), None)
+    # pred = ensemble_xception(X, Y)
+    # print("FB for xceptions")
+    # check_different_thresholds(Y, pred)
 
-        #for one, two in zip(Y, pred):
-        #    print(one[66], two[66])
-        #    two[66] = 1
-    #check_different_thresholds(Y, pred)
-    pred[pred > 0.25] = 1
-    pred[pred <= 0.25] = 0
-    print(classification_report(Y, pred))
-    print(accuracy_score(Y, pred))
-    print(fbeta_score(Y, pred, 1, average='micro'))
-        
-    # create_submission(test_res, test_id, info_string)
+    # pred[pred > 0.27] = 1
+    # pred[pred <= 0.27] = 0
+    # X, Y = load_validation_data((224, 224), None)
+    # pred2 = ensemble_resnet50(X, Y)
+    # check_different_thresholds(Y, pred2)
+    # print("FB for xceptions + resnet50")
+
+    # check_different_thresholds(Y, (pred + pred2)/2)
+    # pred = (pred + pred2) / 2.0
+
+    # pred2[pred2 > 0.25] = 1
+    # pred2[pred2 <= 0.25] = 0
+
+    # pred += pred2
+
+    X, Y = load_validation_data((96, 96), 1000)
+    model = load_vgg16_model("../models/vgg16_all_epoch_7.h5")
+    pred3 = model.predict(X, verbose = 1)
+    check_different_thresholds(Y, pred3)
+
+    # pred3 = pred + pred2 + pred3
+    # pred3 /= 2
+    # check_different_thresholds(Y, pred3)
+    pred3[pred3 > 0.26] = 1
+    pred3[pred3 <= 0.26] = 0
+
+    # pred = pred + pred2 + pred3
+    # pred /= 3
+    # pred[pred > 0.5] = 1
+    # pred[pred <= 0.5] = 0
+    # check_different_thresholds(Y, pred)
+
+    print(classification_report(Y, pred3))
+    print(accuracy_score(Y, pred3))
+    print(fbeta_score(Y, pred3, 1, average='micro'))
+
+       
 def write_submission(pred, labels):
     #p = np.where(pred > 0.5)
     submission = open("submission_1.csv", "w+")
     submission.write("image_id,label_id\n")
     #for p, label in zip(pred, labels):
-    for i in range(1,39707):
+    for i in range(1, 39707):
         try:
             index = int(labels.index(str(i)))
             indices = list(np.where(pred[index] > 0.5)[0])
@@ -134,17 +203,18 @@ def write_submission(pred, labels):
 
     submission.close()
 
+
 def test():
-    X, labels = load_test_data()
-    X /= 255.0
-    #model = load_model()
+    X, labels = load_test_data((299, 299))
+    pred = ensemble_xception(X)
 
-
-    #pred = model.predict(X/255.0, batch_size=16, verbose=1)
-    pred = ensemble_test(X)
-    pred[pred > 0.25] = 1
-    pred[pred <= 0.25] = 0
+    X, labels = load_test_data((224, 224))
+    pred += ensemble_resnet50(X)
+    pred /= 2.0
+    # pred = ensemble_test(X)
+    pred[pred > 0.26] = 1
+    pred[pred <= 0.26] = 0
     write_submission(pred, labels)
 
 if __name__ == '__main__':
-    test()
+    validate()
