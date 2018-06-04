@@ -12,9 +12,6 @@ from sklearn.model_selection import train_test_split
 from keras.utils import Sequence
 from keras.preprocessing.image import random_rotation, random_shear, random_shift
 
-classes = [17, 19, 20, 53, 62, 66, 105, 106, 137, 138,
-           153, 164, 171, 176, 214, 222]
-
 num_classes = 230
 
 def create_targets(anno):
@@ -37,8 +34,11 @@ def create_image(path, shape):
     return img
 
 
-def load_test_data(shape):
-    img_paths = glob.glob("../data/test_images/*")
+def load_test_data(shape, count = None):
+    if count is None:
+        img_paths = glob.glob("../data/test_images/*")
+    else:
+        img_paths = glob.glob("../data/test_images/*")[:count]
     img_paths = sorted(img_paths)
     labels = []
     X = []
@@ -49,11 +49,8 @@ def load_test_data(shape):
         img = create_image(path, shape)
         labels.append(os.path.basename(path).strip('.jpeg'))
         X.append(img)
-    print(labels)
     X = np.array(X).astype('float32')/255.0
     return X, labels
-    #return np.array(X).astype("float32"), labels
-
 
 def create_sample(X_q, Y_q, current_annos, dataset):
     X = []
@@ -74,32 +71,10 @@ def create_sample(X_q, Y_q, current_annos, dataset):
 def convert_to_categorical(Y):
     new_y = []
     for y in Y:
-        #print(y)
         tmp = np.zeros(num_classes)
         tmp[y] = 1
-        #print(tmp)
-        #y = tmp
         new_y.append(tmp)
-    #for new in new_y:
-    #    print(new)
     return new_y
-
-def convert_to_specific_categorical(Y):
-    new_Y = []
-    for y in Y:
-        categorical = []
-
-        for i, current in enumerate(classes):
-            if current in y:
-                categorical.append(1)
-            else:
-                categorical.append(0)
-        new_Y.append(categorical)
-    #print("see conversion")
-        #print(y)
-        #print(categorical)
-    return new_Y
-
 
 def load_annotations(dataset_name, test_size):
     f = open("../input/" + dataset_name + ".json", "r")
@@ -117,7 +92,6 @@ def generate_sets(dataset_name, annotations):
     y_set = []
     for i, anno in enumerate(annotations):
         file_path = '../data/' + dataset_name + '_images/' + str(anno['imageId'] + '.jpeg')
-        #target = set(classes).intersection(create_targets(anno))
         target = create_targets(anno)
         x_set.append(file_path)
         y_set.append(target)
@@ -126,6 +100,7 @@ def generate_sets(dataset_name, annotations):
     y_set = convert_to_categorical(y_set)
     return x_set, y_set
 
+# Generator for kears model. Yields batches.
 class BatchGenerator(Sequence):
 
     def __init__(self, x_set, y_set, batch_size, shape):
@@ -155,10 +130,10 @@ class BatchGenerator(Sequence):
             if img is None:
                 continue
 
-            #img = self.horizontal_flip(img)
-            #img = random_rotation(img, 0.20)
-            #img = random_shift(img, 0.10, 0.10)
-            #img = random_shear(img, 0.10)
+            img = self.horizontal_flip(img)
+            img = random_rotation(img, 0.20)
+            img = random_shift(img, 0.10, 0.10)
+            img = random_shear(img, 0.10)
             X.append(img)
             Y.append(y)
         X = np.array(X).astype('float32')/255.0
@@ -175,7 +150,6 @@ def load_validation_data(shape, count=None):
     Y = []
     for i, anno in enumerate(annotations):
         file_path = '../data/validation_images/' + str(anno['imageId'] + '.jpeg')
-        #target = set(classes).intersection(create_targets(anno))
         target = create_targets(anno)
         img = create_image(file_path, shape)
         if img is None:
@@ -193,14 +167,3 @@ if __name__ == "__main__":
     train, valid = load_annotations(0.33)
     x_set, y_set = generate_sets(train)
     create_skip_list(x_set)
-    #print(np.array(y_set).shape)
-    #print(len(x_set))
-    #train, valid = load_annotations(0.33)
-    #print(len(train), len(valid))
-    #trainGen = load_data()
-    #validGen = BatchGenerator(valid, 1000)
-    #gen = BatchGenerator(1000)
-    #num_classes = gen.get_num_classes()
-    #for i in range(10):
-    #    X, y = trainGen.next()
-    #    print(len(X), len(y))

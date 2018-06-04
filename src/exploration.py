@@ -94,15 +94,3 @@ if __name__ == "__main__":
     calculate_distribution(anno)
     #display_image_without(anno, [100, 66])
     display_image_without(anno, 215)
-
-
-# 51: bh/korset?
-# 52: role/cosplay
-# 53: ??
-# 54: bh/korset?
-# 55: ??
-# 33: brown jeans?
-# 100: tights
-# 200: coat
-# 86: lær?
-# 68: shoes
